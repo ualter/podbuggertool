@@ -49,7 +49,7 @@ func main() {
 
 	controller := NewController(kubeClient, pbtClient,
 		kubeInformerFactory.Apps().V1().Deployments(),
-		pbtInformerFactory.Ualter().V1beta1().PodBuggerTool())
+		pbtInformerFactory.Ualter().V1beta1().Podbuggertools())
 	
 	kubeInformerFactory.Start(stopCh)
 	pbtInformerFactory.Start(stopCh)

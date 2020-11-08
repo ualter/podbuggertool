@@ -191,7 +191,7 @@ func (c *Controller) syncHandler(key string) error {
 	}
 
 	// Get the PodBuggertool resource with this namespace/name
-	podbuggertool, err := c.pbtLister.PodBuggerTool(namespace).Get(name)
+	podbuggertool, err := c.pbtLister.Podbuggertools(namespace).Get(name)
 	if err != nil {
 		// The PodBuggerTool resource may no longer exist, in which case we stop
 		// processing.
@@ -258,10 +258,10 @@ func (c *Controller) syncHandler(key string) error {
 	return nil
 }
 
-func (c *Controller) updatePodbuggertoolStatus(podbuggertool *podbuggertoolv1beta1.PodBuggerTool, deployment *appsv1.Deployment) error {
+func (c *Controller) updatePodbuggertoolStatus(podbuggertool *pbtv1beta1.Podbuggertool, deployment *appsv1.Deployment) error {
 	podbuggertoolCopy := podbuggertool.DeepCopy()
 	podbuggertoolCopy.Status.Installed = 1
-	_, err := c.pbtclientset.UalterV1beta1().PodBuggerTool(podbuggertool.Namespace).Update(context.TODO(), podbuggertoolCopy, metav1.UpdateOptions{})
+	_, err := c.pbtclientset.UalterV1beta1().Podbuggertools(podbuggertool.Namespace).Update(context.TODO(), podbuggertoolCopy, metav1.UpdateOptions{})
 	return err
 }
 
@@ -304,7 +304,7 @@ func (c *Controller) handleObject(obj interface{}) {
 			return
 		}
 
-		podbuggertool, err := c.pbtLister.PodBuggerTool(object.GetNamespace()).Get(ownerRef.Name)
+		podbuggertool, err := c.pbtLister.Podbuggertools(object.GetNamespace()).Get(ownerRef.Name)
 		if err != nil {
 			klog.V(4).Infof("ignoring orphaned object '%s' of podbuggertool '%s'", object.GetSelfLink(), ownerRef.Name)
 			return
@@ -319,7 +319,7 @@ func (c *Controller) handleObject(obj interface{}) {
 // newDeployment creates a new Deployment for a Podbuggertool resource. It also sets
 // the appropriate OwnerReferences on the resource so handleObject can discover
 // the Podbuggertool resource that 'owns' it.
-func newDeployment(podbuggertool *podbuggertoolv1beta1.PodBuggerTool) *appsv1.Deployment {
+func newDeployment(podbuggertool *pbtv1beta1.Podbuggertool) *appsv1.Deployment {
 	labels := map[string]string{
 		"app":        "nginx",
 		"controller": podbuggertool.Name,
@@ -330,7 +330,7 @@ func newDeployment(podbuggertool *podbuggertoolv1beta1.PodBuggerTool) *appsv1.De
 			Name:      podbuggertool.Spec.Image,
 			Namespace: podbuggertool.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
-				*metav1.NewControllerRef(podbuggertool, podbuggertoolv1beta1.SchemeGroupVersion.WithKind("Podbuggertool")),
+				*metav1.NewControllerRef(podbuggertool, pbtv1beta1.SchemeGroupVersion.WithKind("Podbuggertool")),
 			},
 		},
 		Spec: appsv1.DeploymentSpec{

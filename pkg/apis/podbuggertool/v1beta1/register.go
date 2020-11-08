@@ -5,7 +5,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	daemonstool "podbuggertool/pkg/apis/podbuggertool"
+	podbuggertool "podbuggertool/pkg/apis/podbuggertool"
 )
 
 var SchemeGroupVersion = schema.GroupVersion{Group: podbuggertool.GroupName, Version: "v1beta1"}

@@ -23,17 +23,17 @@ $ go run main.go
 
 
 # BUILD & RUN
-$ kubectl apply -f artifacts/daemonstool/crd.yaml  # Install the CRD at Kubernetes first
+$ kubectl apply -f artifacts/podbuggertool/crd.yaml  # Install the CRD at Kubernetes first
 #$  kubectl get crd
-#$  kubectl api-resources | grep daemonstools # check the CRD installed
+#$  kubectl api-resources | grep podbuggertool # check the CRD installed
 $ go build -o pbtctrl .  # Build the controller (executable object)
-$ ./ctrl -kubeconfig ~/.kube/config  -logtostderr=true # Run it
-# Another shell, install a Daemonstool
-$ kubectl apply -f artifacts/daemonstool/daemonstool-example.yaml
+$ ./pbtctrl -kubeconfig ~/.kube/config  -logtostderr=true # Run it
+# Another shell, install a podbuggertool
+$ kubectl apply -f artifacts/podbuggertool/podbuggertool.yaml
 # Watch the pods
 $ kubectl get pods -w
 # Using our CRD API Resource
-$ kubectl get daemonstool
+$ kubectl get podbuggertool
  
 
 ```
