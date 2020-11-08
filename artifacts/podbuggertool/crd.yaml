@@ -25,4 +25,4 @@ spec:
               type: string
           required:
             - image
-            - key
+            - label
