@@ -1,4 +1,4 @@
-module github.com/ualter/podbuggertool
+module podbuggertool
 
 go 1.15
 
