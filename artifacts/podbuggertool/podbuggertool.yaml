@@ -1,0 +1,7 @@
+apiVersion: ualter.com/v1beta1
+kind: Podbuggertool
+metadata:
+  name: podbuggertool
+spec:
+  label: teachstore-course
+  image: busybox
