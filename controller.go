@@ -331,7 +331,7 @@ func generateRandomName() string {
 // the Podbuggertool resource that 'owns' it.
 func newDeployment(podbuggertool *pbtv1beta1.Podbuggertool) *appsv1.Deployment {
 	labels := map[string]string{
-		"app":        "nginx",
+		"app":        "podbuggertool",
 		"controller": podbuggertool.Name,
 	}
 	replicas := int32(1)
