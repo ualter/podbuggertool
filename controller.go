@@ -18,6 +18,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	gouuid "github.com/nu7hatch/gouuid"
+
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	appsinformers "k8s.io/client-go/informers/apps/v1"
@@ -315,6 +317,14 @@ func (c *Controller) handleObject(obj interface{}) {
 	}
 }
 
+func generateRandomName() string {
+	u4, err := gouuid.NewV4()
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("Error generating Podbuggertool Name"))
+		return ""
+	}
+	return u4.String()
+}
 
 // newDeployment creates a new Deployment for a Podbuggertool resource. It also sets
 // the appropriate OwnerReferences on the resource so handleObject can discover

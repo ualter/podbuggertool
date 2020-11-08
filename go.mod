@@ -3,6 +3,7 @@ module podbuggertool
 go 1.15
 
 require (
+	github.com/nu7hatch/gouuid v0.0.0-20131221200532-179d4d0c4d8d
 	k8s.io/api v0.0.0-20201104162213-01c5338f427f
 	k8s.io/apimachinery v0.0.0-20201104162036-79ef3cbd919a
 	k8s.io/client-go v0.0.0-20201104162436-68bb4a9525d8
