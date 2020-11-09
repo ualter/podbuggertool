@@ -116,7 +116,7 @@ func NewController(kubeclientset      kubernetes.Interface,
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func (obj interface{}) {
 			newPod := obj.(*corev1.Pod)
-			fmt.Printf(" ********* \033[1;94mAdded Pod: %s \n\033[0;0m", newPod.Name)
+			fmt.Printf(" ********* \033[1;94m Pod added to K8s: %s \n\033[0;0m", newPod.Name)
 			controller.enqueuePod(newPod)
 		},
 		UpdateFunc: func (oldObj, newObj interface{}) {
@@ -289,9 +289,9 @@ func (c *Controller) handlePod(key string) error {
 	}
 	fmt.Printf(" \033[0;33m ----> POD: %s\033[0;0m\n", pod.Name)
 
-	// Update Pod if is Running/Ready State
-	// It will call updatePod immediatly if the Pod is in the state Running/Ready
-	// Otherwise...
+	// Update Pod if it's in Running/Ready State
+	// It will call updatePod immediatly if the Pod it's in the state Running/Ready
+	//  OTHERWISE...
 	// I will try every 3 seconds, until it returns true, an error, or the timeout(120 seconds) is reached
 	utilwait.PollImmediate(3*time.Second, 120*time.Second, func() (bool, error) {
 		podState, err := c.kubeclientset.CoreV1().Pods(namespace).Get(context.Background(), pod.Name, metav1.GetOptions{})
@@ -304,7 +304,7 @@ func (c *Controller) handlePod(key string) error {
 			}
 			return true, nil
 		}
-		klog.Infof("Pod %s IS NOT in Ready State yet...", pod.Name)
+		klog.Infof("Pod %s IS NOT in Ready yet...", pod.Name)
 		return false, nil
 	})
 
@@ -438,8 +438,9 @@ func(c *Controller) checkLabelPod(pod *corev1.Pod) bool {
 
 		// Check Label is to be considered by the Podbuggertools deployed
 		if mapPodBuggerTool, ok := c.mapPbtool[label]; ok {
-			fmt.Printf("  \033[0;93m    --> THAT'S IT: %s\033[0;0m\n", mapPodBuggerTool.podbuggertool.Spec.Label)
+			fmt.Printf("  \033[0;93m     --> Found Pod to add to Queue: %s\033[0;0m\n", mapPodBuggerTool.podbuggertool.Spec.Label)
 			msg := fmt.Sprintf("Found Pod %s with label %s to be handled", pod.Name, label)
+			klog.Info(msg)
 			c.recorder.Event(mapPodBuggerTool.podbuggertool, corev1.EventTypeNormal, "CheckLabelPod", msg)
 			return true
 		}
@@ -455,6 +456,7 @@ func(c *Controller) updatePod(namespace string, pod *corev1.Pod) error {
 		return nil
 	}
 
+	// Get the PodBuggerTool associated with the label (key=value) in this Pod
 	var mapPodBuggerTool MapPodBuggerTool
 	for k, v := range pod.Labels {
 		label := k + "=" + v
@@ -511,15 +513,13 @@ func (c *Controller) enqueuePod(pod *corev1.Pod) {
 		var key string
 		var err error
 		if key, err = cache.MetaNamespaceKeyFunc(pod); err != nil {
-		utilruntime.HandleError(err)
-		return
+		   utilruntime.HandleError(err)
+		   return
 		}
 		klog.Infof("Pod Successfully queued '%s'", key)
 		c.workqueuePods.Add(key)
 	}
 }
-
- 
 
 // handleObject will take any resource implementing metav1.Object and attempt
 // to find the Podbuggertool resource that 'owns' it. It does this by looking at the
