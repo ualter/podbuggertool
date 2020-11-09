@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"time"
+	"strings"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -36,6 +37,12 @@ import (
 	corelisters "k8s.io/client-go/listers/core/v1"
 )
 
+
+type MapPodBuggetTool struct {
+	pbtv1beta1.Podbuggertool podbuggertool
+	labelValue               string
+}
+
 // Controller is the controller :-)
 type Controller struct {
 	// k8s is a standard kubernetes clientset
@@ -49,7 +56,9 @@ type Controller struct {
 	pbtLister         pbtlisters.PodbuggertoolLister
 	pbtSynced         cache.InformerSynced
 	workqueue         workqueue.RateLimitingInterface
+	workqueuePods     workqueue.RateLimitingInterface
 	recorder          record.EventRecorder
+	mapPbtool         map[string]string
 }
 
 const controllerAgentName = "podbuggertool"
@@ -86,8 +95,11 @@ func NewController(kubeclientset      kubernetes.Interface,
 		pbtLister:         pbtInformer.Lister(),
 		pbtSynced:         pbtInformer.Informer().HasSynced,
 		workqueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "podbuggertool"),
+		workqueuePods:     workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "podbuggertool-pods"),
 		recorder:          recorder,
 	}
+
+	controller.mapPbtool = make(map[string]string)
 
 	klog.Info("Setting up event handlers")
 	// PodBuggerTool
@@ -104,12 +116,13 @@ func NewController(kubeclientset      kubernetes.Interface,
 		AddFunc: func (obj interface{}) {
 			newPod := obj.(*corev1.Pod)
 			//fmt.Printf("Added Pod: %s \n", newPod.Name)
-			controller.handlePod(newPod)
+			controller.enqueuePod(newPod)
 		},
 		UpdateFunc: func (oldObj, newObj interface{}) {
 			newPod := newObj.(*corev1.Pod)
 			oldPod := oldObj.(*corev1.Pod)
 			_, _ = newPod, oldPod
+			controller.enqueuePod(newPod)
 			//fmt.Printf("Added %s, Removed %s \n", newPod.Name, oldPod.Name)
 		},
 		DeleteFunc: func (obj interface{}) {
@@ -171,9 +184,15 @@ func (c *Controller) runWorker() {
 	}
 }
 
+func (c *Controller) processNextWorkItem() bool {
+	var result bool
+	result = c.processNextWorkItemPodbuggertool()
+	result = c.processNextWorkItemPod()
+	return result
+}
 
 // read a single work item off the workqueue and attempt to process it with syncHandler
-func (c *Controller) processNextWorkItem() bool {
+func (c *Controller) processNextWorkItemPodbuggertool() bool {
 	obj, shutdown := c.workqueue.Get()
 
 	if shutdown {
@@ -212,6 +231,81 @@ func (c *Controller) processNextWorkItem() bool {
 	return true
 }
 
+func (c *Controller) processNextWorkItemPod() bool {
+	obj, shutdown := c.workqueuePods.Get()
+
+	if shutdown {
+		return false
+	}
+
+	// We wrap this block in a func so we can defer c.workqueuePods.Done.
+	err := func(obj interface{}) error {
+		defer c.workqueuePods.Done(obj)
+		var key string
+		var ok bool
+
+		if key, ok = obj.(string); !ok {
+			c.workqueuePods.Forget(obj)
+			utilruntime.HandleError(fmt.Errorf("expected string in workqueuePods but got %#v", obj))
+			return nil
+		}
+		
+		if err := c.handlePod(key); err != nil {
+			// Put the item back on the workqueuePods to handle any transient errors.
+			c.workqueuePods.AddRateLimited(key)
+			return fmt.Errorf("error syncing '%s': %s, requeuing in workqueuePods", key, err.Error())
+		}
+
+		// get queued again until another change happens.
+		c.workqueuePods.Forget(obj)
+		klog.Infof("Successfully synced '%s'", key)
+		return nil
+	}(obj)
+
+	if err != nil {
+		utilruntime.HandleError(err)
+		return true
+	}
+
+	return true
+}
+
+func (c *Controller) handlePod(key string) error {
+	fmt.Printf(" \033[0;34m----  KEY: %s\033[0;0m\n", key)
+
+	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
+		return nil
+	}
+
+	pod, err := c.podsLister.Pods(namespace).Get(name)
+	if err != nil {
+	   if errors.IsNotFound(err) {
+	  	  utilruntime.HandleError(fmt.Errorf("Pod '%s' in queue no longer exists", key))
+		  return nil
+	   }
+  	   return err
+	}
+	fmt.Printf(" \033[0;33m----  POD: %s\033[0;0m\n", pod.Name)
+
+	for k, v := range pod.Labels {
+		label := k + "=" + v
+		fmt.Printf("  \033[0;36m    --> Label: %s\033[0;0m\n", label)
+
+		// Check Label is to be considered
+		if value, ok := c.mapPbtool[k]; ok {
+			fmt.Printf("  \033[0;93m    --> THAT'S IT: %s\033[0;0m\n", value)
+		}
+		// Check LABEL is present on one of the deployed Podbuggertool
+		// IF YES:
+		//    enqueue Pod to Add the EphimeralContainer with correlated Image at the Podbuggertool
+		//    DONT FORGET, register the Events of the Controller: Ex: c.recorder.Event(podbuggertool, corev1.EventTypeNormal, SuccessSynced, MessageResourceSynced)
+		// OTHERWISE
+		//    do nothing!
+	}
+	return nil
+}
 
 // syncHandler compares the actual state with the desired, and attempts to converge the two. 
 func (c *Controller) syncHandler(key string) error {
@@ -290,6 +384,20 @@ func (c *Controller) updatePodbuggertoolStatus(podbuggertool *pbtv1beta1.Podbugg
 }
 
 func (c *Controller) enqueuePodbuggertool(obj interface{}) {
+	// Add Label to Map Pool
+	pdt := obj.(*pbtv1beta1.Podbuggertool)
+	if strings.Contains(pdt.Spec.Label,"=") {
+	   lbl := strings.Split(pdt.Spec.Label,"=")
+	   c.mapPbtool[lbl[0]] = lbl[1]
+	   msg := fmt.Sprintf("Received label: %s=%s",lbl[0],lbl[1])
+	   c.recorder.Event(pdt, corev1.EventTypeNormal, SuccessSynced, msg)
+	} else {
+	   msg := fmt.Sprintf("The label %s of the Podbuggertool %s is in incorrect format\n",pdt.Spec.Label,pdt)	
+	   c.recorder.Event(pdt, corev1.EventTypeNormal, "Warning", msg)	
+	   klog.Warningf(msg)
+	}
+
+	// Add Podbuggertool to Queue
 	var key string
 	var err error
 	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
@@ -299,18 +407,15 @@ func (c *Controller) enqueuePodbuggertool(obj interface{}) {
 	c.workqueue.Add(key)
 }
 
-func (c *Controller) handlePod(pod *corev1.Pod) {
-	fmt.Printf("Pod to be handled %s \n", pod.Name)
-	for k, v := range pod.Labels {
-		label := k + "=" + v
-		fmt.Printf("  --> Label: %s\n", label)
-		// Check LABEL is present on one of the deployed Podbuggertool
-		// IF YES:
-		//    enqueue Pod to Add the EphimeralContainer with correlated Image at the Podbuggertool
-		//    DONT FORGET, register the Events of the Controller: Ex: c.recorder.Event(podbuggertool, corev1.EventTypeNormal, SuccessSynced, MessageResourceSynced)
-		// OTHERWISE
-		//    do nothing!
+func (c *Controller) enqueuePod(pod *corev1.Pod) {
+	var key string
+	var err error
+	if key, err = cache.MetaNamespaceKeyFunc(pod); err != nil {
+   	   utilruntime.HandleError(err)
+	   return
 	}
+	klog.Infof("Pod Successfully queued '%s'", key)
+	c.workqueuePods.Add(key)
 }
 
 // handleObject will take any resource implementing metav1.Object and attempt
