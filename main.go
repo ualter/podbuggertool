@@ -47,8 +47,11 @@ func main() {
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
 	pbtInformerFactory := pdtinformers.NewSharedInformerFactory(pbtClient, time.Second*30)
 
-	controller := NewController(kubeClient, pbtClient,
+	controller := NewController(
+		kubeClient, 
+		pbtClient,
 		kubeInformerFactory.Apps().V1().Deployments(),
+		kubeInformerFactory.Core().V1().Pods(),
 		pbtInformerFactory.Ualter().V1beta1().Podbuggertools())
 	
 	kubeInformerFactory.Start(stopCh)

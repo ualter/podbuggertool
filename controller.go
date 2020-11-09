@@ -23,6 +23,7 @@ import (
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	appsinformers "k8s.io/client-go/informers/apps/v1"
+	coreinformers "k8s.io/client-go/informers/core/v1"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	pbtv1beta1   "podbuggertool/pkg/apis/podbuggertool/v1beta1"
@@ -32,6 +33,7 @@ import (
 	pbtlisters   "podbuggertool/pkg/generated/listers/podbuggertool/v1beta1"
 
 	appslisters "k8s.io/client-go/listers/apps/v1"
+	corelisters "k8s.io/client-go/listers/core/v1"
 )
 
 // Controller is the controller :-)
@@ -42,6 +44,8 @@ type Controller struct {
 	pbtclientset      pbtclientset.Interface
 	deploymentsLister appslisters.DeploymentLister
 	deploymentsSynced cache.InformerSynced
+	podsLister        corelisters.PodLister
+	podsSynced        cache.InformerSynced
 	pbtLister         pbtlisters.PodbuggertoolLister
 	pbtSynced         cache.InformerSynced
 	workqueue         workqueue.RateLimitingInterface
@@ -59,7 +63,8 @@ const (
 
 func NewController(kubeclientset      kubernetes.Interface,
 	               pbtclientset       pbtclientset.Interface,
-	               deploymentInformer appsinformers.DeploymentInformer,
+				   deploymentInformer appsinformers.DeploymentInformer,
+				   podInformer        coreinformers.PodInformer,
 	               pbtInformer        pbtinformers.PodbuggertoolInformer) *Controller {
 
 	// Create event broadcaster
@@ -76,6 +81,8 @@ func NewController(kubeclientset      kubernetes.Interface,
 		pbtclientset:      pbtclientset,
 		deploymentsLister: deploymentInformer.Lister(),
 		deploymentsSynced: deploymentInformer.Informer().HasSynced,
+		podsLister:        podInformer.Lister(),
+		podsSynced:        podInformer.Informer().HasSynced,
 		pbtLister:         pbtInformer.Lister(),
 		pbtSynced:         pbtInformer.Informer().HasSynced,
 		workqueue:         workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "podbuggertool"),
@@ -90,6 +97,26 @@ func NewController(kubeclientset      kubernetes.Interface,
 			controller.enqueuePodbuggertool(new)
 		},
 	})
+	klog.Info("PodBuggerTool eventhandler set")
+
+	// Pods
+	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func (obj interface{}) {
+			newPod := obj.(*corev1.Pod)
+			//fmt.Printf("Added Pod: %s \n", newPod.Name)
+			controller.handlePod(newPod)
+		},
+		UpdateFunc: func (oldObj, newObj interface{}) {
+			newPod := newObj.(*corev1.Pod)
+			oldPod := oldObj.(*corev1.Pod)
+			//fmt.Printf("Added %s, Removed %s \n", newPod.Name, oldPod.Name)
+		},
+		DeleteFunc: func (obj interface{}) {
+			delPod := obj.(*corev1.Pod)
+			//fmt.Printf("Deleted Pod: %s \n", delPod.Name)
+		},
+	})
+	klog.Info("Pod eventhandler set")
 
 	// Deployment
 	deploymentInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -106,6 +133,7 @@ func NewController(kubeclientset      kubernetes.Interface,
 		},
 		DeleteFunc: controller.handleObject,
 	})
+	klog.Info("Deployment eventhandler set")
 
 	return controller
 }
@@ -275,6 +303,19 @@ func (c *Controller) enqueuePodbuggertool(obj interface{}) {
 		return
 	}
 	c.workqueue.Add(key)
+}
+
+func (c *Controller) handlePod(pod *corev1.Pod) {
+	fmt.Printf("Pod to be handled %s \n", pod.Name)
+	for k, v := range pod.Labels {
+		label := k + "=" + v
+		fmt.Printf("  --> Label: %s\n", label)
+		// Check LABEL is present on one of the deployed Podbuggertool
+		// IF YES:
+		//    enqueue Pod to Add the EphimeralContainer with correlated Image at the Podbuggertool
+		// OTHERWISE
+		//    do nothing!
+	}
 }
 
 // handleObject will take any resource implementing metav1.Object and attempt
