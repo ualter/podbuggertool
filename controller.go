@@ -287,7 +287,7 @@ func (c *Controller) handlePod(key string) error {
 	   }
   	   return err
 	}
-	fmt.Printf(" \033[0;33m ----> POD: %s\033[0;0m\n", pod.Name)
+	fmt.Printf(" \033[0;33m ----> POD get from WorkQueuePods: %s\033[0;0m\n", pod.Name)
 
 	// Update Pod if it's in Running/Ready State
 	// It will call updatePod immediatly if the Pod it's in the state Running/Ready
@@ -438,7 +438,7 @@ func(c *Controller) checkLabelPod(pod *corev1.Pod) bool {
 
 		// Check Label is to be considered by the Podbuggertools deployed
 		if mapPodBuggerTool, ok := c.mapPbtool[label]; ok {
-			fmt.Printf("  \033[0;93m     --> Found Pod to add to Queue: %s\033[0;0m\n", mapPodBuggerTool.podbuggertool.Spec.Label)
+			fmt.Printf("  \033[0;93m      --> This Pod must be add to Queue: %s\033[0;0m\n", mapPodBuggerTool.podbuggertool.Spec.Label)
 			msg := fmt.Sprintf("Found Pod %s with label %s to be handled", pod.Name, label)
 			klog.Info(msg)
 			c.recorder.Event(mapPodBuggerTool.podbuggertool, corev1.EventTypeNormal, "CheckLabelPod", msg)
