@@ -109,10 +109,12 @@ func NewController(kubeclientset      kubernetes.Interface,
 		UpdateFunc: func (oldObj, newObj interface{}) {
 			newPod := newObj.(*corev1.Pod)
 			oldPod := oldObj.(*corev1.Pod)
+			_, _ = newPod, oldPod
 			//fmt.Printf("Added %s, Removed %s \n", newPod.Name, oldPod.Name)
 		},
 		DeleteFunc: func (obj interface{}) {
 			delPod := obj.(*corev1.Pod)
+			_ = delPod
 			//fmt.Printf("Deleted Pod: %s \n", delPod.Name)
 		},
 	})
