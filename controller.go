@@ -22,7 +22,7 @@ import (
 	gouuid "github.com/nu7hatch/gouuid"
 
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/apimachinery/pkg/util/wait"
+	utilwait "k8s.io/apimachinery/pkg/util/wait"
 	appsinformers "k8s.io/client-go/informers/apps/v1"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	typedcorev1 "k8s.io/client-go/kubernetes/typed/core/v1"
@@ -38,9 +38,10 @@ import (
 )
 
 
-type MapPodBuggetTool struct {
-	pbtv1beta1.Podbuggertool podbuggertool
-	labelValue               string
+type MapPodBuggerTool struct {
+	podbuggertool *pbtv1beta1.Podbuggertool
+	labelKey      string
+	labelValue    string
 }
 
 // Controller is the controller :-)
@@ -58,7 +59,7 @@ type Controller struct {
 	workqueue         workqueue.RateLimitingInterface
 	workqueuePods     workqueue.RateLimitingInterface
 	recorder          record.EventRecorder
-	mapPbtool         map[string]string
+	mapPbtool         map[string]MapPodBuggerTool
 }
 
 const controllerAgentName = "podbuggertool"
@@ -99,7 +100,7 @@ func NewController(kubeclientset      kubernetes.Interface,
 		recorder:          recorder,
 	}
 
-	controller.mapPbtool = make(map[string]string)
+	controller.mapPbtool = make(map[string]MapPodBuggerTool)
 
 	klog.Info("Setting up event handlers")
 	// PodBuggerTool
@@ -115,15 +116,15 @@ func NewController(kubeclientset      kubernetes.Interface,
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func (obj interface{}) {
 			newPod := obj.(*corev1.Pod)
-			//fmt.Printf("Added Pod: %s \n", newPod.Name)
+			fmt.Printf(" ********* \033[1;94mAdded Pod: %s \n\033[0;0m", newPod.Name)
 			controller.enqueuePod(newPod)
 		},
 		UpdateFunc: func (oldObj, newObj interface{}) {
 			newPod := newObj.(*corev1.Pod)
 			oldPod := oldObj.(*corev1.Pod)
 			_, _ = newPod, oldPod
-			controller.enqueuePod(newPod)
-			//fmt.Printf("Added %s, Removed %s \n", newPod.Name, oldPod.Name)
+			//controller.enqueuePod(newPod)
+			//fmt.Printf("    ---->> \033[1;94mAdded %s, Removed %s \033[0;0m\n", newPod.Name, oldPod.Name)
 		},
 		DeleteFunc: func (obj interface{}) {
 			delPod := obj.(*corev1.Pod)
@@ -168,7 +169,7 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 	klog.Info("Starting workers")
 	// Launch two workers to process PodBuggertool resources
 	for i := 0; i < threadiness; i++ {
-		go wait.Until(c.runWorker, time.Second, stopCh)
+		go utilwait.Until(c.runWorker, time.Second, stopCh)
 	}
 
 	klog.Info("Started workers")
@@ -232,6 +233,7 @@ func (c *Controller) processNextWorkItemPodbuggertool() bool {
 }
 
 func (c *Controller) processNextWorkItemPod() bool {
+	fmt.Printf(" \n\nCALLED \033[43mprocessNextWorkItemPod\033[0m\n")
 	obj, shutdown := c.workqueuePods.Get()
 
 	if shutdown {
@@ -271,8 +273,6 @@ func (c *Controller) processNextWorkItemPod() bool {
 }
 
 func (c *Controller) handlePod(key string) error {
-	fmt.Printf(" \033[0;34m----  KEY: %s\033[0;0m\n", key)
-
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
@@ -287,24 +287,37 @@ func (c *Controller) handlePod(key string) error {
 	   }
   	   return err
 	}
-	fmt.Printf(" \033[0;33m----  POD: %s\033[0;0m\n", pod.Name)
+	fmt.Printf(" \033[0;33m ----> POD: %s\033[0;0m\n", pod.Name)
 
-	for k, v := range pod.Labels {
-		label := k + "=" + v
-		fmt.Printf("  \033[0;36m    --> Label: %s\033[0;0m\n", label)
-
-		// Check Label is to be considered
-		if value, ok := c.mapPbtool[k]; ok {
-			fmt.Printf("  \033[0;93m    --> THAT'S IT: %s\033[0;0m\n", value)
+	// Update Pod if is Running/Ready State
+	// It will call updatePod immediatly if the Pod is in the state Running/Ready
+	// Otherwise...
+	// I will try every 3 seconds, until it returns true, an error, or the timeout(120 seconds) is reached
+	utilwait.PollImmediate(3*time.Second, 120*time.Second, func() (bool, error) {
+		podState, err := c.kubeclientset.CoreV1().Pods(namespace).Get(context.Background(), pod.Name, metav1.GetOptions{})
+		if err != nil || c.isPodReady(podState) {
+			if err != nil {
+			   klog.Errorf("Error %s while waiting for Pod %s to be in Ready State", err.Error(), pod.Name)
+			} else {
+			   klog.Infof("Pod %s is READY to be udpated", pod.Name)
+			   c.updatePod(namespace, pod)
+			}
+			return true, nil
 		}
-		// Check LABEL is present on one of the deployed Podbuggertool
-		// IF YES:
-		//    enqueue Pod to Add the EphimeralContainer with correlated Image at the Podbuggertool
-		//    DONT FORGET, register the Events of the Controller: Ex: c.recorder.Event(podbuggertool, corev1.EventTypeNormal, SuccessSynced, MessageResourceSynced)
-		// OTHERWISE
-		//    do nothing!
-	}
+		klog.Infof("Pod %s IS NOT in Ready State yet...", pod.Name)
+		return false, nil
+	})
+
 	return nil
+}
+
+func (c *Controller) isPodReady(pod *corev1.Pod) bool {
+	for _, c := range pod.Status.Conditions {
+		if c.Type == corev1.PodReady && c.Status == corev1.ConditionTrue {
+			return true
+		}
+	}
+	return false
 }
 
 // syncHandler compares the actual state with the desired, and attempts to converge the two. 
@@ -387,10 +400,21 @@ func (c *Controller) enqueuePodbuggertool(obj interface{}) {
 	// Add Label to Map Pool
 	pdt := obj.(*pbtv1beta1.Podbuggertool)
 	if strings.Contains(pdt.Spec.Label,"=") {
-	   lbl := strings.Split(pdt.Spec.Label,"=")
-	   c.mapPbtool[lbl[0]] = lbl[1]
-	   msg := fmt.Sprintf("Received label: %s=%s",lbl[0],lbl[1])
-	   c.recorder.Event(pdt, corev1.EventTypeNormal, SuccessSynced, msg)
+
+	   if _, ok := c.mapPbtool[pdt.Spec.Label]; !ok {
+			splitLbl := strings.Split(pdt.Spec.Label,"=")
+
+			mpbt := MapPodBuggerTool{
+				podbuggertool: pdt,
+				labelKey:      splitLbl[0],
+				labelValue:    splitLbl[1],
+			}
+			c.mapPbtool[pdt.Spec.Label] = mpbt
+	
+			msg := fmt.Sprintf("Looking for labels: %s",pdt.Spec.Label)
+			c.recorder.Event(pdt, corev1.EventTypeNormal, SuccessSynced, msg)
+	   }
+	   
 	} else {
 	   msg := fmt.Sprintf("The label %s of the Podbuggertool %s is in incorrect format\n",pdt.Spec.Label,pdt)	
 	   c.recorder.Event(pdt, corev1.EventTypeNormal, "Warning", msg)	
@@ -407,16 +431,95 @@ func (c *Controller) enqueuePodbuggertool(obj interface{}) {
 	c.workqueue.Add(key)
 }
 
-func (c *Controller) enqueuePod(pod *corev1.Pod) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(pod); err != nil {
-   	   utilruntime.HandleError(err)
-	   return
+func(c *Controller) checkLabelPod(pod *corev1.Pod) bool {
+	for k, v := range pod.Labels {
+		label := k + "=" + v
+		fmt.Printf("  \033[0;36m      --> Label: %s\033[0;0m\n", label)
+
+		// Check Label is to be considered by the Podbuggertools deployed
+		if mapPodBuggerTool, ok := c.mapPbtool[label]; ok {
+			fmt.Printf("  \033[0;93m    --> THAT'S IT: %s\033[0;0m\n", mapPodBuggerTool.podbuggertool.Spec.Label)
+			msg := fmt.Sprintf("Found Pod %s with label %s to be handled", pod.Name, label)
+			c.recorder.Event(mapPodBuggerTool.podbuggertool, corev1.EventTypeNormal, "CheckLabelPod", msg)
+			return true
+		}
 	}
-	klog.Infof("Pod Successfully queued '%s'", key)
-	c.workqueuePods.Add(key)
+	return false
 }
+
+func(c *Controller) updatePod(namespace string, pod *corev1.Pod) error {
+	corev1Pod, err := c.kubeclientset.CoreV1().Pods(namespace).Get(context.TODO(),pod.Name, metav1.GetOptions{})
+
+	if err != nil {
+		utilruntime.HandleError(fmt.Errorf("Something went very badly wrong, Pod '%s' wasn't found", pod.Name))
+		return nil
+	}
+
+	var mapPodBuggerTool MapPodBuggerTool
+	for k, v := range pod.Labels {
+		label := k + "=" + v
+		var ok bool
+	    if mapPodBuggerTool, ok = c.mapPbtool[label]; ok {
+			break;
+		}
+	}
+
+	containers :=  []corev1.EphemeralContainer{
+		{
+			EphemeralContainerCommon: corev1.EphemeralContainerCommon{
+				Name:                     "busybox",
+				Image:                    "busybox",
+				ImagePullPolicy:          corev1.PullIfNotPresent,
+				Command:  []string{"sh"},
+				Stdin: true,
+				TTY: true,
+				TerminationMessagePolicy: "File",
+			},
+		},
+	}
+	var msg string
+	corev1Pod.Spec.EphemeralContainers = containers
+	if _, err := c.kubeclientset.CoreV1().Pods(namespace).Update(context.TODO(), corev1Pod, metav1.UpdateOptions{}); err == nil {
+	   msg := fmt.Sprintf("Error attempting add ephemeral container to Pod '%s'", corev1Pod.Name)
+	   utilruntime.HandleError(fmt.Errorf(msg))
+	   c.recorder.Event(mapPodBuggerTool.podbuggertool, corev1.EventTypeNormal, "UpdatePod", msg)
+	   return nil
+	}
+	ec, err := c.kubeclientset.CoreV1().Pods(namespace).GetEphemeralContainers(context.TODO(), corev1Pod.Name, metav1.GetOptions{})
+	if err != nil {
+	   msg := fmt.Sprintf("Error attempting add ephemeral container to Pod '%s'", corev1Pod.Name)
+	   utilruntime.HandleError(fmt.Errorf(msg))
+	   c.recorder.Event(mapPodBuggerTool.podbuggertool, corev1.EventTypeNormal, "UpdatePod", msg)
+	   return nil
+	}
+	ec.EphemeralContainers = containers
+	if _, err = c.kubeclientset.CoreV1().Pods(namespace).UpdateEphemeralContainers(context.TODO(), corev1Pod.Name, ec, metav1.UpdateOptions{}); err != nil {
+		msg := fmt.Sprintf("Error attempting add ephemeral container to Pod '%s'", corev1Pod.Name)
+		utilruntime.HandleError(fmt.Errorf(msg))
+		c.recorder.Event(mapPodBuggerTool.podbuggertool, corev1.EventTypeNormal, "UpdatePod", msg)
+		return nil
+	}
+	
+	msg = fmt.Sprintf("Successfully added the Ephemeral Container to Pod '%s'", corev1Pod.Name)
+	c.recorder.Event(mapPodBuggerTool.podbuggertool, corev1.EventTypeNormal, "UpdatePod", msg)
+
+	return nil
+}
+
+func (c *Controller) enqueuePod(pod *corev1.Pod) {
+	if considered := c.checkLabelPod(pod); considered {
+		var key string
+		var err error
+		if key, err = cache.MetaNamespaceKeyFunc(pod); err != nil {
+		utilruntime.HandleError(err)
+		return
+		}
+		klog.Infof("Pod Successfully queued '%s'", key)
+		c.workqueuePods.Add(key)
+	}
+}
+
+ 
 
 // handleObject will take any resource implementing metav1.Object and attempt
 // to find the Podbuggertool resource that 'owns' it. It does this by looking at the

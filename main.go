@@ -44,8 +44,10 @@ func main() {
 		klog.Fatalf("Error building PodBuggerTool clientset: %s", err.Error())
 	}
 
-	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
-	pbtInformerFactory := pdtinformers.NewSharedInformerFactory(pbtClient, time.Second*30)
+	/*kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*30)
+	pbtInformerFactory := pdtinformers.NewSharedInformerFactory(pbtClient, time.Second*30)*/
+	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(kubeClient, time.Second*5)
+	pbtInformerFactory := pdtinformers.NewSharedInformerFactory(pbtClient, time.Second*5)
 
 	controller := NewController(
 		kubeClient, 
