@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 	"strings"
+	_ "reflect"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -111,7 +112,10 @@ func NewController(kubeclientset      kubernetes.Interface,
 			pdtOld := old.(*pbtv1beta1.Podbuggertool)
 			if !strings.EqualFold(pdtNew.Spec.Label, pdtOld.Spec.Label)  || 
 			   !strings.EqualFold(pdtNew.Spec.Image, pdtOld.Spec.Image) {
-			   controller.removeTargetLabelForPodbuggertool(pdtOld)
+			   controller.removeTargetLabelForPodbuggertool(pdtOld)  
+			   // When(and IF) implemented (in a new version of K8s specification) 
+			   // Analyze possibility to delete the related added EphemeralContainer Container from the Pods
+			   // controller.deleteEphemeralContainerFromRelatedPods(Old Label, Old Image)
 			   controller.enqueuePodbuggertool(new)
 			   msg := fmt.Sprintf("Updated PodBuggerTool: %s Image(Old)%s to Image(New)%s, Label(Old)%s to Label(New)%s",pdtNew.Name,pdtOld.Spec.Image,pdtNew.Spec.Image,pdtOld.Spec.Label,pdtNew.Spec.Label)
 			   klog.Info(msg)
@@ -121,7 +125,10 @@ func NewController(kubeclientset      kubernetes.Interface,
 		DeleteFunc: func (obj interface{}) {
 			pdt := obj.(*pbtv1beta1.Podbuggertool)
 			controller.removeTargetLabelForPodbuggertool(pdt)
-		},
+			// When(and IF) implemented (in a new version of K8s specification) 
+			// Analyze possibility to delete the related added EphemeralContainer Container from the Pods
+			// controller.deleteEphemeralContainerFromRelatedPods(Deleted Label)
+		}, 
 	})
 	klog.Info("PodBuggerTool eventhandler set")
 
@@ -136,10 +143,8 @@ func NewController(kubeclientset      kubernetes.Interface,
 			newPod := newObj.(*corev1.Pod)
 			oldPod := oldObj.(*corev1.Pod)
 			_, _ = newPod, oldPod
-			// No need here, what matter is when they are recreated (rollout) delete and added
-			//fmt.Printf(" ********* \033[1;94m (UpdateFunc) New: %s, Old: %s \n\033[0;0m", newPod.Name, oldPod.Name)
-			// controller.enqueuePod(newPod)
-			//fmt.Printf("    ---->> \033[1;94mAdded %s, Removed %s \033[0;0m\n", newPod.Name, oldPod.Name)
+			fmt.Printf(" ********* \033[1;94m (UpdateFunc) Pod: %s \n\033[0;0m", newPod.Name)
+			controller.enqueuePod(newPod)
 		},
 		DeleteFunc: func (obj interface{}) {
 			delPod := obj.(*corev1.Pod)
@@ -424,28 +429,20 @@ func (c *Controller) removeTargetLabelForPodbuggertool(pdt *pbtv1beta1.Podbugger
 }
 
 func (c *Controller) cacheTargetLabelForPodbuggertool(pdt *pbtv1beta1.Podbuggertool) {
-	klog.Info("AQUI AQUI AQUI")
 	if strings.Contains(pdt.Spec.Label,"=") {
-		klog.Info("2222222222222222222222222222222222")
 		// Not there? So, do it
 		if _, ok := c.mapPbtool[pdt.Spec.Label]; !ok {
-			 klog.Info("33333333333333333333333333333")
 			 splitLbl := strings.Split(pdt.Spec.Label,"=")
- 
 			 mpbt := MapPodBuggerTool{
 				 podbuggertool: pdt,
 				 labelKey:      splitLbl[0],
 				 labelValue:    splitLbl[1],
 			 }
 			 c.mapPbtool[pdt.Spec.Label] = mpbt
-	 
 			 msg := fmt.Sprintf("Looking for labels: %s",pdt.Spec.Label)
 			 klog.Info(msg)
 			 c.recorder.Event(pdt, corev1.EventTypeNormal, SuccessSynced, msg)
-		} else {
-			klog.Info("444444444444444444444444444444")
 		}
-		
 	 } else {
 		msg := fmt.Sprintf("The label %s of the Podbuggertool %s is in incorrect format\n",pdt.Spec.Label,pdt)	
 		c.recorder.Event(pdt, corev1.EventTypeNormal, "Warning", msg)	
@@ -474,8 +471,10 @@ func(c *Controller) checkLabelPod(pod *corev1.Pod) bool {
 		label := k + "=" + v
 		fmt.Printf("  \033[0;36m      --> Label: %s\033[0;0m\n", label)
 
-		// Check Label is to be considered by the Podbuggertools deployed
+		// Check if this Label's Pod must be considered (target) by a PodBuggerTool deployed
 		if mapPodBuggerTool, ok := c.mapPbtool[label]; ok {
+			// HERE CHECK IF THE POD HAS ALREADY A EPHEMERAL CONTAINER OF THE SAME IMAGE OF THE
+			// PODBUGGERTOOL. IF IT DOES, IT WAS HANDLED ALREADY, NOT NECESSARY TO ADD TO QUEUE AGAIN
 			fmt.Printf("  \033[0;93m      --> This Pod must be add to Queue: %s\033[0;0m\n", mapPodBuggerTool.podbuggertool.Spec.Label)
 			msg := fmt.Sprintf("Found Pod %s with label %s to be handled", pod.Name, label)
 			klog.Info(msg)
