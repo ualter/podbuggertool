@@ -235,7 +235,7 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
-	deploymentName := podbuggertool.Spec.Image
+	deploymentName := podbuggertool.Name
 	if deploymentName == "" {
 		utilruntime.HandleError(fmt.Errorf("%s: deployment name must be specified", key))
 		return nil
@@ -262,14 +262,6 @@ func (c *Controller) syncHandler(key string) error {
 		c.recorder.Event(podbuggertool, corev1.EventTypeWarning, ErrResourceExists, msg)
 		return fmt.Errorf(msg)
 	}
-
-	// If this number of the replicas on the Podbuggertool resource is specified, and the
-	// number does not equal the current desired replicas on the Deployment, we
-	// should update the Deployment resource.
-	/*if podbuggertool.Spec.Replicas != nil && *podbuggertool.Spec.Replicas != *deployment.Spec.Replicas {
-		klog.V(4).Infof("Podbuggertool %s replicas: %d, deployment replicas: %d", name, *podbuggertool.Spec.Replicas, *deployment.Spec.Replicas)
-		deployment, err = c.kubeclientset.AppsV1().Deployments(podbuggertool.Namespace).Update(context.TODO(), newDeployment(podbuggertool), metav1.UpdateOptions{})
-	}*/
 
 	// If an error occurs during Update, we'll requeue the item so we can
 	// attempt processing again later. This could have been caused by a
@@ -315,6 +307,7 @@ func (c *Controller) handlePod(pod *corev1.Pod) {
 		// Check LABEL is present on one of the deployed Podbuggertool
 		// IF YES:
 		//    enqueue Pod to Add the EphimeralContainer with correlated Image at the Podbuggertool
+		//    DONT FORGET, register the Events of the Controller: Ex: c.recorder.Event(podbuggertool, corev1.EventTypeNormal, SuccessSynced, MessageResourceSynced)
 		// OTHERWISE
 		//    do nothing!
 	}
@@ -375,12 +368,12 @@ func generateRandomName() string {
 func newDeployment(podbuggertool *pbtv1beta1.Podbuggertool) *appsv1.Deployment {
 	labels := map[string]string{
 		"app":        "podbuggertool",
-		"controller": podbuggertool.Name,
+		"deployment": podbuggertool.Name,
 	}
 	replicas := int32(1)
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      podbuggertool.Spec.Image,
+			Name:      podbuggertool.Name,
 			Namespace: podbuggertool.Namespace,
 			OwnerReferences: []metav1.OwnerReference{
 				*metav1.NewControllerRef(podbuggertool, pbtv1beta1.SchemeGroupVersion.WithKind("Podbuggertool")),

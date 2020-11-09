@@ -3,5 +3,5 @@ kind: Podbuggertool
 metadata:
   name: podbuggertool
 spec:
-  label: teachstore-course
+  label: key=value
   image: busybox
