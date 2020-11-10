@@ -188,9 +188,10 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 	}
 
 	klog.Info("Starting workers")
-	// Launch two workers to process PodBuggertool resources
+	// Launch two workers to process PodBuggertool and Pod resources
 	for i := 0; i < threadiness; i++ {
-		go utilwait.Until(c.runWorker, time.Second, stopCh)
+		go utilwait.Until(c.runWorkerPodBuggerTool, time.Second, stopCh)
+		go utilwait.Until(c.runWorkerPods, time.Second, stopCh)
 	}
 
 	klog.Info("Started workers")
@@ -201,21 +202,21 @@ func (c *Controller) Run(threadiness int, stopCh <-chan struct{}) error {
 }
 
 // Continually run
-func (c *Controller) runWorker() {
-	for c.processNextWorkItem() {
+func (c *Controller) runWorkerPodBuggerTool() {
+	for c.processNextWorkItemPodbuggertool() {
 	}
 }
 
-func (c *Controller) processNextWorkItem() bool {
-	var result bool
-	result = c.processNextWorkItemPodbuggertool()
-	result = c.processNextWorkItemPod()
-	return result
+func (c *Controller) runWorkerPods() {
+	for c.processNextWorkItemPod() {
+	}
 }
 
 // read a single work item off the workqueue and attempt to process it with syncHandler
 func (c *Controller) processNextWorkItemPodbuggertool() bool {
+	fmt.Println("\033[0;91mCALLED processNextWorkItemPodbuggertool - Before c.workqueue.Get()\033[0;0m")
 	obj, shutdown := c.workqueue.Get()
+	fmt.Println("\033[0;91mCALLED processNextWorkItemPodbuggertool - After c.workqueue.Get()\033[0;0m")
 
 	if shutdown {
 		return false
@@ -254,8 +255,9 @@ func (c *Controller) processNextWorkItemPodbuggertool() bool {
 }
 
 func (c *Controller) processNextWorkItemPod() bool {
-	fmt.Printf(" \n\nCALLED \033[43mprocessNextWorkItemPod\033[0m\n")
+	fmt.Printf(" \n\nCALLED \033[43mprocessNextWorkItemPod - Before c.workqueuePods.Get()\033[0m\n")
 	obj, shutdown := c.workqueuePods.Get()
+	fmt.Printf(" \n\nCALLED \033[43mprocessNextWorkItemPod - After c.workqueuePods.Get()\033[0m\n")
 
 	if shutdown {
 		return false
@@ -453,7 +455,6 @@ func (c *Controller) cacheTargetLabelForPodbuggertool(pdt *pbtv1beta1.Podbuggert
 func (c *Controller) enqueuePodbuggertool(obj interface{}) {
 	// Add Label of PodBuggerTool to the Mapping Pool
 	pdt := obj.(*pbtv1beta1.Podbuggertool)
-	klog.Infof(" ***************** ENQUEUE PodBuggerTool:%s",pdt.Name)
 	c.cacheTargetLabelForPodbuggertool(pdt)
 
 	// Add Podbuggertool to Queue
@@ -473,6 +474,7 @@ func(c *Controller) checkLabelPod(pod *corev1.Pod) bool {
 
 		// Check if this Label's Pod must be considered (target) by a PodBuggerTool deployed
 		if mapPodBuggerTool, ok := c.mapPbtool[label]; ok {
+			//TODO:
 			// HERE CHECK IF THE POD HAS ALREADY A EPHEMERAL CONTAINER OF THE SAME IMAGE OF THE
 			// PODBUGGERTOOL. IF IT DOES, IT WAS HANDLED ALREADY, NOT NECESSARY TO ADD TO QUEUE AGAIN
 			fmt.Printf("  \033[0;93m      --> This Pod must be add to Queue: %s\033[0;0m\n", mapPodBuggerTool.podbuggertool.Spec.Label)
@@ -503,11 +505,12 @@ func(c *Controller) updatePod(namespace string, pod *corev1.Pod) error {
 		}
 	}
 
+	containerName := "ephemeral-" + mapPodBuggerTool.podbuggertool.Spec.Image
 	containers :=  []corev1.EphemeralContainer{
 		{
 			EphemeralContainerCommon: corev1.EphemeralContainerCommon{
-				Name:                     "busybox",
-				Image:                    "busybox",
+				Name:                     containerName,
+				Image:                    mapPodBuggerTool.podbuggertool.Spec.Image,
 				ImagePullPolicy:          corev1.PullIfNotPresent,
 				Command:  []string{"sh"},
 				Stdin: true,
@@ -518,22 +521,22 @@ func(c *Controller) updatePod(namespace string, pod *corev1.Pod) error {
 	}
 	var msg string
 	corev1Pod.Spec.EphemeralContainers = containers
-	if _, err := c.kubeclientset.CoreV1().Pods(namespace).Update(context.TODO(), corev1Pod, metav1.UpdateOptions{}); err == nil {
-	   msg := fmt.Sprintf("Error attempting add ephemeral container to Pod '%s'", corev1Pod.Name)
+	/*if _, err := c.kubeclientset.CoreV1().Pods(namespace).Update(context.TODO(), corev1Pod, metav1.UpdateOptions{}); err != nil {
+	   msg := fmt.Sprintf("Error attempting add ephemeral container to Pod '%s', Error:%s", corev1Pod.Name, err.Error())
 	   utilruntime.HandleError(fmt.Errorf(msg))
 	   c.recorder.Event(mapPodBuggerTool.podbuggertool, corev1.EventTypeNormal, "UpdatePod", msg)
 	   return nil
-	}
+	}*/
 	ec, err := c.kubeclientset.CoreV1().Pods(namespace).GetEphemeralContainers(context.TODO(), corev1Pod.Name, metav1.GetOptions{})
 	if err != nil {
-	   msg := fmt.Sprintf("Error attempting add ephemeral container to Pod '%s'", corev1Pod.Name)
+		msg := fmt.Sprintf("Error attempting add ephemeral container to Pod '%s', Error:%s", corev1Pod.Name, err.Error())
 	   utilruntime.HandleError(fmt.Errorf(msg))
 	   c.recorder.Event(mapPodBuggerTool.podbuggertool, corev1.EventTypeNormal, "UpdatePod", msg)
 	   return nil
 	}
 	ec.EphemeralContainers = containers
 	if _, err = c.kubeclientset.CoreV1().Pods(namespace).UpdateEphemeralContainers(context.TODO(), corev1Pod.Name, ec, metav1.UpdateOptions{}); err != nil {
-		msg := fmt.Sprintf("Error attempting add ephemeral container to Pod '%s'", corev1Pod.Name)
+		msg := fmt.Sprintf("Error attempting add ephemeral container to Pod '%s', Error:%s", corev1Pod.Name, err.Error())
 		utilruntime.HandleError(fmt.Errorf(msg))
 		c.recorder.Event(mapPodBuggerTool.podbuggertool, corev1.EventTypeNormal, "UpdatePod", msg)
 		return nil
