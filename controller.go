@@ -1,3 +1,7 @@
+/*
+  Ualter Otoni Pereira
+  ualter.junior@gmail.com
+*/
 package main
 
 import (
