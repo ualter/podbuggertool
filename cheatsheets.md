@@ -15,19 +15,16 @@
 # 4 .Creates the Boilerplate code with the script
   ./hack/update-codegen.sh
 
-
   # Cheat Sheet
 $ go mod init main.go 
 $ go run main.go
-
-
 
 # BUILD & RUN
 $ kubectl apply -f artifacts/podbuggertool/crd.yaml  # Install the CRD at Kubernetes first
 #$  kubectl get crd
 #$  kubectl api-resources | grep podbuggertool # check the CRD installed
-$ go build -o pbtctrl .  # Build the controller (executable object)
-$ ./pbtctrl -kubeconfig ~/.kube/config  -logtostderr=true # Run it
+$ go build  .  # Build the controller (executable object)
+$ ./podbuggertool -kubeconfig ~/.kube/config  -logtostderr=true # Run it
 # Another shell, install a podbuggertool
 $ kubectl apply -f artifacts/podbuggertool/podbuggertool.yaml
 # Watch the pods
@@ -36,4 +33,8 @@ $ kubectl get pods -w
 $ kubectl get podbuggertool
  
 
+
+# Packaging
+docker build . -t ualter/podbuggertool
+docker push ualter/podbuggertool
 ```
