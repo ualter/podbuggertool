@@ -16,6 +16,8 @@
   go mod vendor  
 # 4 .Creates the Boilerplate code with the script
   ./hack/update-codegen.sh
+# 5 .Work on the controller (do the rest)
+
 
 ##########################
 ## Cheat Sheet
