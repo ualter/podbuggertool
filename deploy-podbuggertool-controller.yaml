@@ -1,0 +1,17 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: podbuggertool
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: podbuggertool
+  template:
+    metadata:
+      labels:
+        app: podbuggertool
+    spec:
+      containers:
+      - name: podbuggertool
+        image: "ualter/podbuggertool:latest"

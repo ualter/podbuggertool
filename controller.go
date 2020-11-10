@@ -366,26 +366,22 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
+	/*
+	// For now, let's don't create any further object when a PodBuggerTool were Created/Updated
 	deploymentName := podbuggertool.Name
 	if deploymentName == "" {
 		utilruntime.HandleError(fmt.Errorf("%s: deployment name must be specified", key))
 		return nil
 	}
-
 	// Get the deployment with the name specified in Podbuggertool.Name
 	deployment, err := c.deploymentsLister.Deployments(podbuggertool.Namespace).Get(deploymentName)
 	// If the resource doesn't exist, we'll create it
 	if errors.IsNotFound(err) {
 		deployment, err = c.kubeclientset.AppsV1().Deployments(podbuggertool.Namespace).Create(context.TODO(), newDeployment(podbuggertool), metav1.CreateOptions{})
 	}
-
-	// If an error occurs during Get/Create, we'll requeue the item so we can
-	// attempt processing again later. This could have been caused by a
-	// temporary network failure, or any other transient reason.
 	if err != nil {
 		return err
 	}
-
 	// If the Deployment is not controlled by this Podbuggertool resource, we should log
 	// a warning to the event recorder and return error msg.
 	if !metav1.IsControlledBy(deployment, podbuggertool) {
@@ -393,17 +389,16 @@ func (c *Controller) syncHandler(key string) error {
 		c.recorder.Event(podbuggertool, corev1.EventTypeWarning, ErrResourceExists, msg)
 		return fmt.Errorf(msg)
 	}
-
 	// If an error occurs during Update, we'll requeue the item so we can
 	// attempt processing again later. This could have been caused by a
 	// temporary network failure, or any other transient reason.
 	if err != nil {
 		return err
 	}
+	*/
 
-	// Finally, we update the status block of the Podbuggertool resource to reflect the
-	// current state of the world
-	err = c.updatePodbuggertoolStatus(podbuggertool, deployment)
+	// Update the status block of the Podbuggertool resource to reflect the current state of the world
+	err = c.updatePodbuggertoolStatus(podbuggertool)
 	if err != nil {
 		return err
 	}
@@ -413,7 +408,8 @@ func (c *Controller) syncHandler(key string) error {
 	return nil
 }
 
-func (c *Controller) updatePodbuggertoolStatus(podbuggertool *pbtv1beta1.Podbuggertool, deployment *appsv1.Deployment) error {
+//func (c *Controller) updatePodbuggertoolStatus(podbuggertool *pbtv1beta1.Podbuggertool, deployment *appsv1.Deployment) error {
+func (c *Controller) updatePodbuggertoolStatus(podbuggertool *pbtv1beta1.Podbuggertool) error {
 	podbuggertoolCopy := podbuggertool.DeepCopy()
 	podbuggertoolCopy.Status.Installed = 1
 	_, err := c.pbtclientset.UalterV1beta1().Podbuggertools(podbuggertool.Namespace).Update(context.TODO(), podbuggertoolCopy, metav1.UpdateOptions{})

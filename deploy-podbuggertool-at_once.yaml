@@ -1,0 +1,61 @@
+# Just to make faster the deploy operation :-)
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: operator-role
+rules:
+- apiGroups: [""]
+  resources: ["events"]
+#  verbs: ["get","list","watch","create","update","patch","delete"]
+  verbs: ["create"]
+- apiGroups: ["apps"]
+  resources: ["daemonsets","deployments"]
+  verbs: ["get","list","watch","create","update","patch","delete"]
+- apiGroups: [""]
+  resources: ["pods","pods/ephemeralcontainers"]
+  verbs: ["get","list","watch","create","update","patch","delete"]
+- apiGroups: ["ualter.com"]
+  resources: ["podbuggertools"]
+  verbs: ["get","list","watch","create","update","patch","delete"]
+
+---
+
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: operator-rolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: operator-role
+subjects:
+- kind: ServiceAccount
+  name: default
+  # Pay Attention! The namespace used
+  namespace: develop
+
+---
+
+# This is our Operator installation
+# This operator is a Golang application
+# Another part that need to be install also is the CRD (Custom Resource Definition) associated with this Operator
+# The CRD represents the API Resources that this Operator handles (understand) and controll them, so...
+# After instal this operator, to create a PodbuggerTool instance, we need to define it using its manifest (see an example: /artifacts/pobbuggertool/podbuggertool-teachstore.yaml)
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: podbuggertool
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: podbuggertool
+  template:
+    metadata:
+      labels:
+        app: podbuggertool
+    spec:
+      containers:
+      - name: podbuggertool
+        image: "ualter/podbuggertool:latest"
