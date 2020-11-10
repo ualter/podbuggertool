@@ -15,3 +15,5 @@ spec:
       containers:
       - name: podbuggertool
         image: "ualter/podbuggertool:latest"
+        #imagePullPolicy: Always
+        imagePullPolicy: IfNotPresent
