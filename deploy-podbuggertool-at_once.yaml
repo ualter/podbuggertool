@@ -58,6 +58,8 @@ spec:
     spec:
       containers:
       - name: podbuggertool
-        image: "ualter/podbuggertool:latest"
-        #imagePullPolicy: Always
+        image: "ualter/podbuggertool:0.1.0"
         imagePullPolicy: IfNotPresent
+        #image: "ualter/podbuggertool:latest"
+        #imagePullPolicy: Always
+        
