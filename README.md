@@ -18,4 +18,4 @@ A Kubernetes Operator, with objective to help troubleshooting our application’
 ---
 
 Check:
-https://ualterazambuja.com/2020/11/14/kubernetes-operators-in-go/
+https://ualterazambuja.com/2020/11/15/kubernetes-operators-in-go/
